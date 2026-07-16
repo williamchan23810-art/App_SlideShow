@@ -18,26 +18,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    /* Soft 0.8s Integration (Cross-Dissolve) Transition */
-    .slide {
-      opacity: 0;
-      transition: opacity 800ms ease-in-out;
-    }
-    .slide.active {
-      opacity: 1;
-    }
-
-    /* Cinematic Ken Burns Effect (Slow Blow-Up) */
-    @keyframes kenBurns {
-      0% {
-        transform: scale(1.0);
-      }
-      100% {
-        transform: scale(1.15); /* Slow continuous zoom over the 4-second duration */
-      }
-    }
-    .slide.active img {
-      animation: kenBurns 4800ms linear forwards; /* Matches 4s view time + transition overlap */
+    /* Styling for full screen container */
+    #slideshow-canvas {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
     }
   </style>
 </head>
@@ -74,16 +58,22 @@
           <button id="btn-reset" class="bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all">
             Reset
           </button>
+          <button id="btn-save-video" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Save as Video
+          </button>
         </div>
       </div>
     </div>
   </header>
 
   <!-- ================= SLIDESHOW VIEWPORT ================= -->
-  <main class="relative flex-grow w-full h-full bg-black overflow-hidden">
+  <main class="relative flex-grow w-full h-full bg-black overflow-hidden flex items-center justify-center">
     
     <!-- Empty State / Drag-Drop Zone -->
-    <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-20">
+    <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-20 bg-zinc-950">
       <div class="p-4 rounded-full bg-zinc-900 border border-zinc-800 mb-4">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -93,14 +83,8 @@
       <p class="text-sm text-zinc-500 max-w-sm">Type in your destination name, select your sorted travel photos, and press Play to begin.</p>
     </div>
 
-    <!-- Active Slides Container -->
-    <div id="slides-container" class="absolute inset-0 w-full h-full"></div>
-
-    <!-- Place/City Name Overlay (Shows on first few slides) -->
-    <div id="overlay-title" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none text-center transition-all duration-1000 opacity-0">
-      <h1 id="title-text" class="text-4xl md:text-6xl font-extrabold uppercase tracking-widest drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"></h1>
-      <div class="w-16 h-1 bg-white mx-auto mt-4 rounded-full opacity-80 shadow"></div>
-    </div>
+    <!-- Active Slides Canvas -->
+    <canvas id="slideshow-canvas" class="w-full h-full object-contain bg-black"></canvas>
 
     <!-- Floating UI Toggle (Hover near bottom of screen to show control bar toggle) -->
     <button id="toggle-header" class="absolute top-2 right-4 z-50 bg-black/60 hover:bg-black/80 border border-zinc-800 px-3 py-1 rounded text-xs text-zinc-400 transition-all">
@@ -108,28 +92,87 @@
     </button>
   </main>
 
+  <!-- ================= RENDERING PROGRESS MODAL ================= -->
+  <div id="progress-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/85 backdrop-blur-sm">
+    <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl max-w-md w-full mx-4 text-center shadow-2xl">
+      <div class="mb-4">
+        <!-- Modern Loader SVG -->
+        <svg class="animate-spin h-10 w-10 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      </div>
+      <h3 class="text-lg font-bold text-zinc-100 mb-1" id="modal-title">Generating Cinematic Video</h3>
+      <p class="text-xs text-zinc-400 mb-6">Compiling transitions, zoom effects, and logos...</p>
+      
+      <!-- Progress Bar -->
+      <div class="w-full bg-zinc-800 h-2.5 rounded-full overflow-hidden mb-3">
+        <div id="modal-progress-bar" class="bg-blue-600 h-full rounded-full transition-all duration-100" style="width: 0%;"></div>
+      </div>
+      <div class="flex justify-between items-center text-xs mb-6">
+        <span class="text-zinc-500">Rendering Progress</span>
+        <span id="modal-percentage" class="font-semibold text-blue-400">0%</span>
+      </div>
+      
+      <div class="p-3 bg-blue-950/20 border border-blue-900/30 rounded text-left flex gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p class="text-[11px] text-zinc-400 leading-normal">
+          <strong>Important:</strong> Keep this browser tab open and active during export to ensure smooth and uninterrupted video generation.
+        </p>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= JAVASCRIPT LOGIC ================= -->
   <script>
     const imageLoader = document.getElementById('image-loader');
     const locationInput = document.getElementById('location-name');
-    const slidesContainer = document.getElementById('slides-container');
+    const canvas = document.getElementById('slideshow-canvas');
+    const ctx = canvas.getContext('2d');
     const emptyState = document.getElementById('empty-state');
     const playbackControls = document.getElementById('playback-controls');
     const btnPlayPause = document.getElementById('btn-play-pause');
     const btnReset = document.getElementById('btn-reset');
-    const overlayTitle = document.getElementById('overlay-title');
-    const titleText = document.getElementById('title-text');
+    const btnSaveVideo = document.getElementById('btn-save-video');
     const controlPanel = document.getElementById('control-panel');
     const toggleHeaderBtn = document.getElementById('toggle-header');
 
-    let imagesList = [];
-    let currentIndex = -1;
-    let slideshowInterval = null;
-    let titleTimer = null;
+    // Modal elements
+    const progressModal = document.getElementById('progress-modal');
+    const modalProgressBar = document.getElementById('modal-progress-bar');
+    const modalPercentage = document.getElementById('modal-percentage');
+
+    // Canvas Settings
+    const V_WIDTH = 1920;
+    const V_HEIGHT = 1080;
+    canvas.width = V_WIDTH;
+    canvas.height = V_HEIGHT;
+
+    // State Variables
+    let imagesList = [];     // Array of Object URLs
+    let loadedImages = [];   // Array of Image elements
+    let logoImage = new Image();
+    let logoLoaded = false;
+
+    // Preload travel logo
+    logoImage.onload = () => { logoLoaded = true; };
+    logoImage.onerror = () => { logoLoaded = false; };
+    logoImage.src = 'logo.png';
+
+    let slideshowTime = 0;   // Current elapsed time in milliseconds
+    let lastTimestamp = 0;   // Timestamp of last frame
+    let isPlaying = false;
+    let isRecording = false;
+    let animationFrameId = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
 
     // Timing constants
-    const FRAME_DURATION = 4000; // 4 seconds per slide
-    const TITLE_SHOW_SLIDES = 2;  // Show title text for the first 2 slides
+    const FRAME_DURATION = 4000;   // 4 seconds per image slide
+    const TRANSITION_DURATION = 800; // 0.8 seconds cross-dissolve overlap
+    const END_SLIDE_DURATION = 4000; // 4 seconds showing the logo
 
     // File selection event handler
     imageLoader.addEventListener('change', handleImageSelection);
@@ -141,149 +184,409 @@
       // Reset existing state
       resetSlideshow();
       imagesList = [];
+      loadedImages = [];
 
       // Sort files alphabetically to respect local sorting sequence
       files.sort((a, b) => a.name.localeCompare(b.name));
 
-      // Read files as local object URLs (fastest, user-friendly client import)
-      files.forEach(file => {
-        const url = URL.createObjectURL(file);
-        imagesList.push(url);
-      });
+      // Map to object URLs
+      const urls = files.map(file => URL.createObjectURL(file));
+      imagesList = urls;
 
-      if (imagesList.length > 0) {
-        emptyState.classList.add('hidden');
-        playbackControls.classList.remove('hidden');
-        playbackControls.classList.add('flex');
-        initSlidesDOM();
-        btnPlayPause.focus();
-      }
-    }
-
-    // Initialize slide layers inside DOM
-    function initSlidesDOM() {
-      slidesContainer.innerHTML = '';
-      
-      imagesList.forEach((src, idx) => {
-        const slideDiv = document.createElement('div');
-        slideDiv.className = `slide absolute inset-0 w-full h-full flex items-center justify-center bg-black ${idx === 0 ? '' : 'pointer-events-none'}`;
-        slideDiv.id = `slide-${idx}`;
-
-        const img = document.createElement('img');
-        img.src = src;
-        img.className = "w-full h-full object-cover origin-center"; // object-cover ensures fullscreen aspect fill
-        
-        slideDiv.appendChild(img);
-        slidesContainer.appendChild(slideDiv);
-      });
-
-      // Add "William H. Chan Travel + Eats" End Label
-      const endSlide = document.createElement('div');
-      endSlide.className = "slide absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-zinc-950 pointer-events-none";
-      endSlide.id = `slide-end`;
-      
-      endSlide.innerHTML = `
-        <div class="text-center flex flex-col items-center justify-center">
-          <img src="logo.png" alt="William H. Chan Travel + Eats" class="mx-auto w-64 h-64 md:w-80 md:h-80 mb-6 rounded-full border border-zinc-800 shadow-2xl animate-pulse object-cover" />
-          <h2 class="text-2xl font-bold tracking-wider text-zinc-100">William H. Chan Travel + Eats</h2>
-          <p class="text-sm text-zinc-400 mt-2">Thank You for Watching</p>
+      // Show temporary loading UI
+      emptyState.innerHTML = `
+        <div class="text-center flex flex-col items-center">
+          <svg class="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <h2 class="text-lg font-semibold mb-1">Preloading Pictures</h2>
+          <p class="text-sm text-zinc-500">Optimizing images for cinematic rendering...</p>
         </div>
       `;
-      slidesContainer.appendChild(endSlide);
+      emptyState.classList.remove('hidden');
+
+      // Preload images into memory
+      let loadedCount = 0;
+      urls.forEach((url, idx) => {
+        const img = new Image();
+        img.onload = () => {
+          loadedCount++;
+          if (loadedCount === urls.length) {
+            onImagesPreloaded();
+          }
+        };
+        img.onerror = () => {
+          loadedCount++;
+          if (loadedCount === urls.length) {
+            onImagesPreloaded();
+          }
+        };
+        img.src = url;
+        loadedImages[idx] = img;
+      });
     }
 
-    // Start/Pause slideshow functionality
+    function onImagesPreloaded() {
+      emptyState.classList.add('hidden');
+      playbackControls.classList.remove('hidden');
+      playbackControls.classList.add('flex');
+      
+      // Draw initial slide frame
+      drawFrame(0);
+      btnPlayPause.focus();
+    }
+
+    // Play/Pause control
     btnPlayPause.addEventListener('click', () => {
-      if (slideshowInterval) {
+      if (isPlaying) {
         pauseSlideshow();
       } else {
         startSlideshow();
       }
     });
 
-    // Reset interface
+    // Reset control
     btnReset.addEventListener('click', resetSlideshow);
 
+    // Save as Video control
+    btnSaveVideo.addEventListener('click', () => {
+      if (loadedImages.length > 0) {
+        startRecording();
+      }
+    });
+
     function startSlideshow() {
-      if (imagesList.length === 0) return;
+      if (loadedImages.length === 0) return;
       
+      isPlaying = true;
+      lastTimestamp = 0;
       btnPlayPause.innerText = 'Pause';
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
 
-      // Auto-hide configuration bar when starting to give full focus to presentation
+      // Auto-hide header for cinematic immersion
       hideHeader();
 
-      // Start the cycle
-      if (currentIndex === -1) {
-        nextSlide();
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(animLoop);
       }
-      
-      slideshowInterval = setInterval(nextSlide, FRAME_DURATION);
     }
 
     function pauseSlideshow() {
-      clearInterval(slideshowInterval);
-      slideshowInterval = null;
+      isPlaying = false;
       btnPlayPause.innerText = 'Play';
       btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
       btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
+      
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
     }
 
     function resetSlideshow() {
       pauseSlideshow();
-      currentIndex = -1;
-      
-      // Clean up DOM and reset state
-      Array.from(slidesContainer.children).forEach(slide => {
-        slide.classList.remove('active');
-      });
-
-      overlayTitle.classList.add('opacity-0');
-      clearTimeout(titleTimer);
-
-      btnPlayPause.innerText = 'Start';
-      btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
-      btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
-      
+      slideshowTime = 0;
+      lastTimestamp = 0;
+      drawFrame(0);
       showHeader();
     }
 
-    function nextSlide() {
-      const totalSlides = imagesList.length;
-      
-      // Remove 'active' state from previous slide
-      if (currentIndex >= 0 && currentIndex < totalSlides) {
-        document.getElementById(`slide-${currentIndex}`).classList.remove('active');
-      } else if (currentIndex === totalSlides) {
-        document.getElementById('slide-end').classList.remove('active');
+    // Main animation loop
+    function animLoop(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+
+      if (isPlaying) {
+        slideshowTime += dt;
       }
 
-      currentIndex++;
+      drawFrame(slideshowTime);
 
-      // Trigger Destination Overlay Text Logic
-      handleTitleOverlay(totalSlides);
+      const N = loadedImages.length;
+      const totalDuration = N * FRAME_DURATION + END_SLIDE_DURATION;
 
-      if (currentIndex < totalSlides) {
-        // Activate standard image slide
-        document.getElementById(`slide-${currentIndex}`).classList.add('active');
-      } else if (currentIndex === totalSlides) {
-        // Activate End Screen Label
-        document.getElementById('slide-end').classList.add('active');
-        pauseSlideshow(); // Stop cycling once end-label is reached
+      // Manage progress bar during video export
+      if (isRecording) {
+        const progressPercent = Math.min(100, Math.floor((slideshowTime / totalDuration) * 100));
+        modalProgressBar.style.width = `${progressPercent}%`;
+        modalPercentage.innerText = `${progressPercent}%`;
+      }
+
+      // Check if slideshow is complete
+      if (slideshowTime >= totalDuration) {
+        pauseSlideshow();
+        if (isRecording) {
+          stopRecording();
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(animLoop);
       }
     }
 
-    function handleTitleOverlay(totalSlides) {
-      const locationName = locationInput.value.trim();
+    // Calculate Ken Burns scale factor (1.0 to 1.15)
+    function getSlideScale(i, time) {
+      const t_start = i > 0 ? (i * FRAME_DURATION - TRANSITION_DURATION) : 0;
+      const elapsed = time - t_start;
+      if (elapsed < 0) return 1.0;
       
-      if (locationName && currentIndex < TITLE_SHOW_SLIDES && currentIndex < totalSlides) {
-        titleText.innerText = locationName;
-        overlayTitle.classList.remove('opacity-0');
-        overlayTitle.classList.add('opacity-100');
+      const duration = i > 0 ? (FRAME_DURATION + TRANSITION_DURATION) : FRAME_DURATION;
+      const progress = Math.min(1.0, elapsed / duration);
+      return 1.0 + 0.15 * progress;
+    }
+
+    // Helper to draw an image centered and scaled with CSS object-cover behavior
+    function drawImageSlide(ctx, img, scale, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      const canvasRatio = V_WIDTH / V_HEIGHT;
+      const imgRatio = img.width / img.height;
+      let drawWidth, drawHeight;
+
+      if (imgRatio > canvasRatio) {
+        drawHeight = V_HEIGHT;
+        drawWidth = V_HEIGHT * imgRatio;
       } else {
-        overlayTitle.classList.remove('opacity-100');
-        overlayTitle.classList.add('opacity-0');
+        drawWidth = V_WIDTH;
+        drawHeight = V_WIDTH / imgRatio;
+      }
+
+      // Center scale and draw
+      ctx.translate(V_WIDTH / 2, V_HEIGHT / 2);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+      ctx.restore();
+    }
+
+    // Render a single frame to the canvas
+    function drawFrame(time) {
+      // Clear with dark solid background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+      const N = loadedImages.length;
+      if (N === 0) return;
+
+      const totalImageTime = N * FRAME_DURATION;
+
+      if (time >= totalImageTime) {
+        // --- DRAW END SLIDE ---
+        const endElapsed = time - totalImageTime;
+        const alpha = Math.min(1.0, endElapsed / TRANSITION_DURATION);
+
+        // Solid dark background for logo screen
+        ctx.fillStyle = '#09090b';
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+        // Cross-fade: Draw last image fading out
+        if (endElapsed < TRANSITION_DURATION) {
+          const lastImg = loadedImages[N - 1];
+          const lastScale = getSlideScale(N - 1, time);
+          if (lastImg) {
+            drawImageSlide(ctx, lastImg, lastScale, 1.0 - alpha);
+          }
+        }
+
+        // Draw William H. Chan Travel + Eats logo contents
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // Subtle pulsing zoom for logo
+        const pulseScale = 1.0 + 0.03 * Math.sin(endElapsed * 0.002);
+
+        if (logoLoaded && logoImage.complete && logoImage.naturalWidth > 0) {
+          ctx.save();
+          // Draw circular clip path
+          ctx.beginPath();
+          const radius = 120 * pulseScale;
+          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
+          ctx.clip();
+
+          // Draw logo image inside circle
+          ctx.drawImage(logoImage, V_WIDTH / 2 - radius, V_HEIGHT / 2 - 80 - radius, radius * 2, radius * 2);
+          ctx.restore();
+
+          // Outer circle border
+          ctx.strokeStyle = 'rgba(63, 63, 70, 0.6)'; // zinc-700
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, 120 * pulseScale, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Draw ending texts
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = '#f4f4f5'; // zinc-100
+        ctx.font = 'bold 36px sans-serif';
+        ctx.fillText('William H. Chan Travel + Eats', V_WIDTH / 2, V_HEIGHT / 2 + 100);
+
+        ctx.fillStyle = '#a1a1aa'; // zinc-400
+        ctx.font = '20px sans-serif';
+        ctx.fillText('Thank You for Watching', V_WIDTH / 2, V_HEIGHT / 2 + 160);
+
+        ctx.restore();
+      } else {
+        // --- DRAW IMAGE SLIDES ---
+        const idx = Math.floor(time / FRAME_DURATION);
+        const t_slide = time % FRAME_DURATION;
+
+        // Current base image
+        const imgCurr = loadedImages[idx];
+        const scaleCurr = getSlideScale(idx, time);
+
+        if (imgCurr) {
+          drawImageSlide(ctx, imgCurr, scaleCurr, 1.0);
+        }
+
+        // Transition: Cross-dissolve into next slide
+        if (t_slide >= (FRAME_DURATION - TRANSITION_DURATION)) {
+          const nextIdx = idx + 1;
+          const progress = (t_slide - (FRAME_DURATION - TRANSITION_DURATION)) / TRANSITION_DURATION;
+
+          if (nextIdx < N) {
+            const imgNext = loadedImages[nextIdx];
+            const scaleNext = getSlideScale(nextIdx, time);
+            if (imgNext) {
+              drawImageSlide(ctx, imgNext, scaleNext, progress);
+            }
+          } else {
+            // Fade-in dark screen of end slide
+            ctx.save();
+            ctx.fillStyle = '#09090b';
+            ctx.globalAlpha = progress;
+            ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+            ctx.restore();
+          }
+        }
+
+        // Draw Place / City Name Overlay
+        const locationName = locationInput.value.trim();
+        if (locationName && time < (2 * FRAME_DURATION)) {
+          let textAlpha = 1.0;
+          if (time < TRANSITION_DURATION) {
+            textAlpha = time / TRANSITION_DURATION;
+          } else if (time > (2 * FRAME_DURATION - TRANSITION_DURATION)) {
+            textAlpha = Math.max(0, 1 - (time - (2 * FRAME_DURATION - TRANSITION_DURATION)) / TRANSITION_DURATION);
+          }
+
+          ctx.save();
+          ctx.globalAlpha = textAlpha;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Text shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+          ctx.shadowBlur = 12;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 4;
+
+          // Header Text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 72px sans-serif';
+          if ('letterSpacing' in ctx) {
+            ctx.letterSpacing = '8px';
+          }
+          ctx.fillText(locationName.toUpperCase(), V_WIDTH / 2, V_HEIGHT / 2);
+
+          // White underline divider
+          ctx.shadowColor = 'transparent';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+          ctx.beginPath();
+          ctx.roundRect(V_WIDTH / 2 - 40, V_HEIGHT / 2 + 50, 80, 4, 2);
+          ctx.fill();
+
+          ctx.restore();
+        }
+      }
+    }
+
+    // MediaRecorder Video Export Logic
+    function startRecording() {
+      recordedChunks = [];
+      
+      // Determine the best video mimeType supported by the user's browser
+      let mimeType = 'video/webm;codecs=vp9';
+      
+      if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
+        mimeType = 'video/mp4;codecs=h264';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mimeType = 'video/mp4';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        mimeType = 'video/webm;codecs=vp8';
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        mimeType = 'video/webm';
+      }
+
+      const stream = canvas.captureStream(30); // Capture canvas at 30 FPS
+      
+      try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+      } catch (e) {
+        console.warn("Fallback to default MediaRecorder configuration:", e);
+        mediaRecorder = new MediaRecorder(stream);
+      }
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const finalBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/mp4' });
+        const url = URL.createObjectURL(finalBlob);
+        
+        // Trigger local file download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `travel_slideshow_${Date.now()}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        // Hide progress modal
+        progressModal.classList.add('hidden');
+        progressModal.classList.remove('flex');
+        
+        isRecording = false;
+        resetSlideshow();
+      };
+
+      // Enter recording state
+      isRecording = true;
+      progressModal.classList.remove('hidden');
+      progressModal.classList.add('flex');
+      
+      // Reset play state and start recording
+      mediaRecorder.start();
+      
+      slideshowTime = 0;
+      lastTimestamp = 0;
+      isPlaying = true;
+      btnPlayPause.innerText = 'Pause';
+      btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
+      btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
+      
+      hideHeader();
+      
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(animLoop);
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
       }
     }
 
