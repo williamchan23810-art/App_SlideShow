@@ -1,4 +1,4 @@
-# App_SlideShow | Travel Memories
+# App_SlideShow | Fond Memories
 
 An elegant, browser-based cinematic slideshow web application designed to showcase your travel memories in stunning visual quality. Built with vanilla HTML/JS and Tailwind CSS.
 
