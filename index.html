@@ -30,9 +30,12 @@
   <!-- ================= CONTROL / IMPORT BAR ================= -->
   <header id="control-panel" class="z-50 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4 transition-all duration-300">
     <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-      <div>
-        <h1 class="text-xl font-bold tracking-wide">App_SlideShow</h1>
-        <p class="text-xs text-zinc-400">Cinematic 4s intervals • 0.8s transitions • Auto-zoomed</p>
+      <div class="flex items-center gap-3">
+        <img src="logo.png" alt="Logo" class="w-10 h-10 rounded-full border border-zinc-700 object-cover shadow" />
+        <div>
+          <h1 class="text-xl font-bold tracking-wide">App_SlideShow</h1>
+          <p class="text-xs text-zinc-400">Cinematic 4s intervals • 0.8s transitions • Auto-zoomed</p>
+        </div>
       </div>
       
       <div class="flex flex-wrap items-center gap-3">
@@ -86,10 +89,6 @@
     <!-- Active Slides Canvas -->
     <canvas id="slideshow-canvas" class="w-full h-full object-contain bg-black"></canvas>
 
-    <!-- Floating UI Toggle (Hover near bottom of screen to show control bar toggle) -->
-    <button id="toggle-header" class="absolute top-2 right-4 z-50 bg-black/60 hover:bg-black/80 border border-zinc-800 px-3 py-1 rounded text-xs text-zinc-400 transition-all">
-      Hide Settings
-    </button>
   </main>
 
   <!-- ================= RENDERING PROGRESS MODAL ================= -->
@@ -137,7 +136,6 @@
     const btnReset = document.getElementById('btn-reset');
     const btnSaveVideo = document.getElementById('btn-save-video');
     const controlPanel = document.getElementById('control-panel');
-    const toggleHeaderBtn = document.getElementById('toggle-header');
 
     // Modal elements
     const progressModal = document.getElementById('progress-modal');
@@ -276,9 +274,6 @@
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
 
-      // Auto-hide header for cinematic immersion
-      hideHeader();
-
       if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(animLoop);
       }
@@ -301,7 +296,6 @@
       slideshowTime = 0;
       lastTimestamp = 0;
       drawFrame(0);
-      showHeader();
     }
 
     // Main animation loop
@@ -455,11 +449,11 @@
 
         ctx.fillStyle = '#f4f4f5'; // zinc-100
         ctx.font = 'bold 36px sans-serif';
-        ctx.fillText('William H. Chan Travel + Eats', V_WIDTH / 2, V_HEIGHT / 2 + 100);
+        ctx.fillText('William H. Chan Studio', V_WIDTH / 2, V_HEIGHT / 2 + 100);
 
         ctx.fillStyle = '#a1a1aa'; // zinc-400
         ctx.font = '20px sans-serif';
-        ctx.fillText('Thank You for Watching', V_WIDTH / 2, V_HEIGHT / 2 + 160);
+        ctx.fillText('Explore. Learn. Discover.', V_WIDTH / 2, V_HEIGHT / 2 + 160);
 
         ctx.restore();
       } else {
@@ -605,8 +599,6 @@
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
       
-      hideHeader();
-      
       if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(animLoop);
       }
@@ -618,24 +610,6 @@
       }
     }
 
-    // Toggle settings panel visibility
-    toggleHeaderBtn.addEventListener('click', () => {
-      if (controlPanel.classList.contains('-translate-y-full')) {
-        showHeader();
-      } else {
-        hideHeader();
-      }
-    });
-
-    function hideHeader() {
-      controlPanel.classList.add('-translate-y-full', 'absolute');
-      toggleHeaderBtn.innerText = "Show Settings";
-    }
-
-    function showHeader() {
-      controlPanel.classList.remove('-translate-y-full', 'absolute');
-      toggleHeaderBtn.innerText = "Hide Settings";
-    }
   </script>
 </body>
 </html>
