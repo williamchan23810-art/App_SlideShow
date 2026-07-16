@@ -30,10 +30,10 @@
   <!-- ================= CONTROL / IMPORT BAR ================= -->
   <header id="control-panel" class="z-50 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4 transition-all duration-300">
     <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <img src="logo.png" alt="Logo" class="w-10 h-10 rounded-full border border-zinc-700 object-cover shadow" />
+      <div class="flex items-center gap-4">
+        <img src="logo.png" alt="Logo" class="w-[120px] h-[120px] rounded-full border-2 border-zinc-700 object-cover shadow-lg" />
         <div>
-          <h1 class="text-xl font-bold tracking-wide">App_SlideShow</h1>
+          <h1 class="text-2xl font-bold tracking-wide text-zinc-100">App_SlideShow</h1>
           <p class="text-xs text-zinc-400">Cinematic 4s intervals • 0.8s transitions • Auto-zoomed</p>
         </div>
       </div>
@@ -53,15 +53,15 @@
           <input type="file" id="image-loader" multiple accept="image/*" class="hidden" />
         </label>
 
-        <!-- Control Buttons (Hidden until pictures loaded) -->
-        <div id="playback-controls" class="hidden items-center gap-2">
-          <button id="btn-play-pause" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all">
+        <!-- Control Buttons (Always visible, disabled when empty) -->
+        <div id="playback-controls" class="flex items-center gap-2">
+          <button id="btn-play-pause" disabled class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             Start
           </button>
-          <button id="btn-reset" class="bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all">
+          <button id="btn-reset" disabled class="bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             Reset
           </button>
-          <button id="btn-save-video" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow">
+          <button id="btn-save-video" disabled class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow disabled:opacity-50 disabled:cursor-not-allowed">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
@@ -172,6 +172,9 @@
     const TRANSITION_DURATION = 800; // 0.8 seconds cross-dissolve overlap
     const END_SLIDE_DURATION = 4000; // 4 seconds showing the logo
 
+    // Initialize button states
+    updateButtonStates();
+
     // File selection event handler
     imageLoader.addEventListener('change', handleImageSelection);
 
@@ -238,8 +241,7 @@
 
     function onImagesPreloaded() {
       emptyState.classList.add('hidden');
-      playbackControls.classList.remove('hidden');
-      playbackControls.classList.add('flex');
+      updateButtonStates();
       
       // Draw initial slide frame
       drawFrame(0);
@@ -296,6 +298,20 @@
       slideshowTime = 0;
       lastTimestamp = 0;
       drawFrame(0);
+      updateButtonStates();
+    }
+
+    function updateButtonStates() {
+      const hasImages = loadedImages.length > 0;
+      if (hasImages) {
+        btnPlayPause.removeAttribute('disabled');
+        btnReset.removeAttribute('disabled');
+        btnSaveVideo.removeAttribute('disabled');
+      } else {
+        btnPlayPause.setAttribute('disabled', 'true');
+        btnReset.setAttribute('disabled', 'true');
+        btnSaveVideo.setAttribute('disabled', 'true');
+      }
     }
 
     // Main animation loop
