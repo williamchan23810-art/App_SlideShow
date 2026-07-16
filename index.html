@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App_SlideShow | Travel Memories</title>
+
+  <!-- Open Graph Meta Tags for Meta-Debugger -->
+  <meta property="og:title" content="My Travel SlideShow" />
+  <meta property="og:description" content="A cinematic journey through my favorite destinations." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="og-image.jpg" /> 
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Tailwind CSS for modern, rapid styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* Soft 0.8s Integration (Cross-Dissolve) Transition */
+    .slide {
+      opacity: 0;
+      transition: opacity 800ms ease-in-out;
+    }
+    .slide.active {
+      opacity: 1;
+    }
+
+    /* Cinematic Ken Burns Effect (Slow Blow-Up) */
+    @keyframes kenBurns {
+      0% {
+        transform: scale(1.0);
+      }
+      100% {
+        transform: scale(1.15); /* Slow continuous zoom over the 4-second duration */
+      }
+    }
+    .slide.active img {
+      animation: kenBurns 4800ms linear forwards; /* Matches 4s view time + transition overlap */
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-white font-sans h-screen w-screen overflow-hidden flex flex-col justify-between select-none">
+
+  <!-- ================= CONTROL / IMPORT BAR ================= -->
+  <header id="control-panel" class="z-50 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4 transition-all duration-300">
+    <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-wide">App_SlideShow</h1>
+        <p class="text-xs text-zinc-400">Cinematic 4s intervals • 0.8s transitions • Auto-zoomed</p>
+      </div>
+      
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Input fields -->
+        <input 
+          type="text" 
+          id="location-name" 
+          placeholder="Enter Place / City Name" 
+          class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+        />
+        
+        <!-- File Input (Supports multiple file selection) -->
+        <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all shadow">
+          Choose Pictures
+          <input type="file" id="image-loader" multiple accept="image/*" class="hidden" />
+        </label>
+
+        <!-- Control Buttons (Hidden until pictures loaded) -->
+        <div id="playback-controls" class="hidden items-center gap-2">
+          <button id="btn-play-pause" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all">
+            Start
+          </button>
+          <button id="btn-reset" class="bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all">
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= SLIDESHOW VIEWPORT ================= -->
+  <main class="relative flex-grow w-full h-full bg-black overflow-hidden">
+    
+    <!-- Empty State / Drag-Drop Zone -->
+    <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-20">
+      <div class="p-4 rounded-full bg-zinc-900 border border-zinc-800 mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <h2 class="text-lg font-semibold mb-1">No Pictures Loaded</h2>
+      <p class="text-sm text-zinc-500 max-w-sm">Type in your destination name, select your sorted travel photos, and press Play to begin.</p>
+    </div>
+
+    <!-- Active Slides Container -->
+    <div id="slides-container" class="absolute inset-0 w-full h-full"></div>
+
+    <!-- Place/City Name Overlay (Shows on first few slides) -->
+    <div id="overlay-title" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none text-center transition-all duration-1000 opacity-0">
+      <h1 id="title-text" class="text-4xl md:text-6xl font-extrabold uppercase tracking-widest drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"></h1>
+      <div class="w-16 h-1 bg-white mx-auto mt-4 rounded-full opacity-80 shadow"></div>
+    </div>
+
+    <!-- Floating UI Toggle (Hover near bottom of screen to show control bar toggle) -->
+    <button id="toggle-header" class="absolute top-2 right-4 z-50 bg-black/60 hover:bg-black/80 border border-zinc-800 px-3 py-1 rounded text-xs text-zinc-400 transition-all">
+      Hide Settings
+    </button>
+  </main>
+
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    const imageLoader = document.getElementById('image-loader');
+    const locationInput = document.getElementById('location-name');
+    const slidesContainer = document.getElementById('slides-container');
+    const emptyState = document.getElementById('empty-state');
+    const playbackControls = document.getElementById('playback-controls');
+    const btnPlayPause = document.getElementById('btn-play-pause');
+    const btnReset = document.getElementById('btn-reset');
+    const overlayTitle = document.getElementById('overlay-title');
+    const titleText = document.getElementById('title-text');
+    const controlPanel = document.getElementById('control-panel');
+    const toggleHeaderBtn = document.getElementById('toggle-header');
+
+    let imagesList = [];
+    let currentIndex = -1;
+    let slideshowInterval = null;
+    let titleTimer = null;
+
+    // Timing constants
+    const FRAME_DURATION = 4000; // 4 seconds per slide
+    const TITLE_SHOW_SLIDES = 2;  // Show title text for the first 2 slides
+
+    // File selection event handler
+    imageLoader.addEventListener('change', handleImageSelection);
+
+    function handleImageSelection(event) {
+      const files = Array.from(event.target.files);
+      if (files.length === 0) return;
+
+      // Reset existing state
+      resetSlideshow();
+      imagesList = [];
+
+      // Sort files alphabetically to respect local sorting sequence
+      files.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Read files as local object URLs (fastest, user-friendly client import)
+      files.forEach(file => {
+        const url = URL.createObjectURL(file);
+        imagesList.push(url);
+      });
+
+      if (imagesList.length > 0) {
+        emptyState.classList.add('hidden');
+        playbackControls.classList.remove('hidden');
+        playbackControls.classList.add('flex');
+        initSlidesDOM();
+        btnPlayPause.focus();
+      }
+    }
+
+    // Initialize slide layers inside DOM
+    function initSlidesDOM() {
+      slidesContainer.innerHTML = '';
+      
+      imagesList.forEach((src, idx) => {
+        const slideDiv = document.createElement('div');
+        slideDiv.className = `slide absolute inset-0 w-full h-full flex items-center justify-center bg-black ${idx === 0 ? '' : 'pointer-events-none'}`;
+        slideDiv.id = `slide-${idx}`;
+
+        const img = document.createElement('img');
+        img.src = src;
+        img.className = "w-full h-full object-cover origin-center"; // object-cover ensures fullscreen aspect fill
+        
+        slideDiv.appendChild(img);
+        slidesContainer.appendChild(slideDiv);
+      });
+
+      // Add "William H. Chan Travel + Eats" End Label
+      const endSlide = document.createElement('div');
+      endSlide.className = "slide absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-zinc-950 pointer-events-none";
+      endSlide.id = `slide-end`;
+      
+      endSlide.innerHTML = `
+        <div class="text-center flex flex-col items-center justify-center">
+          <img src="logo.png" alt="William H. Chan Travel + Eats" class="mx-auto w-64 h-64 md:w-80 md:h-80 mb-6 rounded-full border border-zinc-800 shadow-2xl animate-pulse object-cover" />
+          <h2 class="text-2xl font-bold tracking-wider text-zinc-100">William H. Chan Travel + Eats</h2>
+          <p class="text-sm text-zinc-400 mt-2">Thank You for Watching</p>
+        </div>
+      `;
+      slidesContainer.appendChild(endSlide);
+    }
+
+    // Start/Pause slideshow functionality
+    btnPlayPause.addEventListener('click', () => {
+      if (slideshowInterval) {
+        pauseSlideshow();
+      } else {
+        startSlideshow();
+      }
+    });
+
+    // Reset interface
+    btnReset.addEventListener('click', resetSlideshow);
+
+    function startSlideshow() {
+      if (imagesList.length === 0) return;
+      
+      btnPlayPause.innerText = 'Pause';
+      btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
+      btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
+
+      // Auto-hide configuration bar when starting to give full focus to presentation
+      hideHeader();
+
+      // Start the cycle
+      if (currentIndex === -1) {
+        nextSlide();
+      }
+      
+      slideshowInterval = setInterval(nextSlide, FRAME_DURATION);
+    }
+
+    function pauseSlideshow() {
+      clearInterval(slideshowInterval);
+      slideshowInterval = null;
+      btnPlayPause.innerText = 'Play';
+      btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
+      btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
+    }
+
+    function resetSlideshow() {
+      pauseSlideshow();
+      currentIndex = -1;
+      
+      // Clean up DOM and reset state
+      Array.from(slidesContainer.children).forEach(slide => {
+        slide.classList.remove('active');
+      });
+
+      overlayTitle.classList.add('opacity-0');
+      clearTimeout(titleTimer);
+
+      btnPlayPause.innerText = 'Start';
+      btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
+      btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
+      
+      showHeader();
+    }
+
+    function nextSlide() {
+      const totalSlides = imagesList.length;
+      
+      // Remove 'active' state from previous slide
+      if (currentIndex >= 0 && currentIndex < totalSlides) {
+        document.getElementById(`slide-${currentIndex}`).classList.remove('active');
+      } else if (currentIndex === totalSlides) {
+        document.getElementById('slide-end').classList.remove('active');
+      }
+
+      currentIndex++;
+
+      // Trigger Destination Overlay Text Logic
+      handleTitleOverlay(totalSlides);
+
+      if (currentIndex < totalSlides) {
+        // Activate standard image slide
+        document.getElementById(`slide-${currentIndex}`).classList.add('active');
+      } else if (currentIndex === totalSlides) {
+        // Activate End Screen Label
+        document.getElementById('slide-end').classList.add('active');
+        pauseSlideshow(); // Stop cycling once end-label is reached
+      }
+    }
+
+    function handleTitleOverlay(totalSlides) {
+      const locationName = locationInput.value.trim();
+      
+      if (locationName && currentIndex < TITLE_SHOW_SLIDES && currentIndex < totalSlides) {
+        titleText.innerText = locationName;
+        overlayTitle.classList.remove('opacity-0');
+        overlayTitle.classList.add('opacity-100');
+      } else {
+        overlayTitle.classList.remove('opacity-100');
+        overlayTitle.classList.add('opacity-0');
+      }
+    }
+
+    // Toggle settings panel visibility
+    toggleHeaderBtn.addEventListener('click', () => {
+      if (controlPanel.classList.contains('-translate-y-full')) {
+        showHeader();
+      } else {
+        hideHeader();
+      }
+    });
+
+    function hideHeader() {
+      controlPanel.classList.add('-translate-y-full', 'absolute');
+      toggleHeaderBtn.innerText = "Show Settings";
+    }
+
+    function showHeader() {
+      controlPanel.classList.remove('-translate-y-full', 'absolute');
+      toggleHeaderBtn.innerText = "Hide Settings";
+    }
+  </script>
+</body>
+</html>
