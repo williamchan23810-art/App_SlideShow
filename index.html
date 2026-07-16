@@ -206,22 +206,33 @@
       `;
       emptyState.classList.remove('hidden');
 
-      // Preload images into memory
+      // Preload images into memory (and check if logo is preloaded too)
       let loadedCount = 0;
+      let totalToLoad = urls.length;
+
+      const checkAllLoaded = () => {
+        loadedCount++;
+        if (loadedCount === totalToLoad) {
+          onImagesPreloaded();
+        }
+      };
+
+      if (!logoImage.complete) {
+        totalToLoad++;
+        logoImage.onload = () => {
+          logoLoaded = true;
+          checkAllLoaded();
+        };
+        logoImage.onerror = () => {
+          logoLoaded = false;
+          checkAllLoaded();
+        };
+      }
+
       urls.forEach((url, idx) => {
         const img = new Image();
-        img.onload = () => {
-          loadedCount++;
-          if (loadedCount === urls.length) {
-            onImagesPreloaded();
-          }
-        };
-        img.onerror = () => {
-          loadedCount++;
-          if (loadedCount === urls.length) {
-            onImagesPreloaded();
-          }
-        };
+        img.onload = checkAllLoaded;
+        img.onerror = checkAllLoaded;
         img.src = url;
         loadedImages[idx] = img;
       });
@@ -397,12 +408,13 @@
 
         // Subtle pulsing zoom for logo
         const pulseScale = 1.0 + 0.03 * Math.sin(endElapsed * 0.002);
+        const radius = 120 * pulseScale;
+        const hasLogo = logoImage.complete && logoImage.naturalWidth > 0;
 
-        if (logoLoaded && logoImage.complete && logoImage.naturalWidth > 0) {
+        if (hasLogo) {
           ctx.save();
           // Draw circular clip path
           ctx.beginPath();
-          const radius = 120 * pulseScale;
           ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
           ctx.clip();
 
@@ -414,8 +426,24 @@
           ctx.strokeStyle = 'rgba(63, 63, 70, 0.6)'; // zinc-700
           ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, 120 * pulseScale, 0, Math.PI * 2);
+          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
           ctx.stroke();
+        } else {
+          // Draw a beautiful fallback styled icon (pulsing circular badge with W)
+          ctx.beginPath();
+          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(30, 58, 138, 0.3)'; // blue-900/30
+          ctx.fill();
+          
+          ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)'; // blue-500/50
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#60a5fa'; // blue-400
+          ctx.font = `bold ${Math.floor(80 * pulseScale)}px sans-serif`;
+          ctx.fillText('W', V_WIDTH / 2, V_HEIGHT / 2 - 80);
         }
 
         // Draw ending texts
