@@ -29,7 +29,7 @@
 
   <!-- ================= CONTROL / IMPORT BAR ================= -->
   <header id="control-panel" class="z-50 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4 transition-all duration-300">
-    <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <img src="logo.png" alt="Logo" class="w-[120px] h-[120px] rounded-full border-2 border-zinc-700 object-cover shadow-lg" />
         <div>
@@ -39,13 +39,25 @@
       </div>
       
       <div class="flex flex-wrap items-center gap-3">
-        <!-- Input fields -->
+        <!-- Place Input -->
         <input 
           type="text" 
           id="location-name" 
           placeholder="Enter Place / City Name" 
-          class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+          class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
         />
+
+        <!-- Background Music Selector -->
+        <select id="music-vibe" class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44">
+          <option value="none">🎵 No Background Music</option>
+          <option value="travel">✈️ Travel Adventure (API)</option>
+          <option value="cinematic">🎬 Cinematic Dream (API)</option>
+          <option value="acoustic">🎸 Sunset Acoustic (API)</option>
+          <option value="ambient">🧘 Chill Ambient (API)</option>
+          <option value="custom">📂 Upload Custom MP3...</option>
+        </select>
+        <!-- Hidden file loader for custom audio -->
+        <input type="file" id="audio-loader" accept="audio/*" class="hidden" />
         
         <!-- File Input (Supports multiple file selection) -->
         <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all shadow">
@@ -67,6 +79,8 @@
             </svg>
             Save as Video
           </button>
+          <!-- Loaded Music Status Label -->
+          <span id="music-status" class="text-xs text-blue-400 font-medium ml-1 max-w-[180px] truncate hidden" title=""></span>
         </div>
       </div>
     </div>
@@ -75,15 +89,19 @@
   <!-- ================= SLIDESHOW VIEWPORT ================= -->
   <main class="relative flex-grow w-full h-full bg-black overflow-hidden flex items-center justify-center">
     
-    <!-- Empty State / Drag-Drop Zone -->
-    <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-20 bg-zinc-950">
-      <div class="p-4 rounded-full bg-zinc-900 border border-zinc-800 mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
+    <!-- Empty State / Custom Welcome Screen -->
+    <div id="empty-state" class="absolute inset-0 z-20 bg-zinc-950 flex items-center justify-center overflow-hidden">
+      <img src="welcome.jpg" alt="Welcome to William H. Chan Slide Show Studio" class="w-full h-full object-cover opacity-90 transition-all duration-500" />
+      <!-- Semi-transparent overlay with start tips to keep it usable -->
+      <div class="absolute inset-0 bg-black/40 flex flex-col items-center justify-center p-6 text-center">
+        <div class="bg-zinc-950/80 backdrop-blur border border-zinc-800 p-6 rounded-2xl max-w-md shadow-2xl">
+          <h2 class="text-xl font-bold mb-2 text-white tracking-wide">Slide Show Studio</h2>
+          <p class="text-sm text-zinc-300 mb-4 leading-relaxed">Type in your destination name, choose your background music vibe, select your sorted travel photos, and press Play to begin.</p>
+          <div class="inline-block text-xs font-semibold px-3 py-1.5 bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-full">
+            Ready to Create
+          </div>
+        </div>
       </div>
-      <h2 class="text-lg font-semibold mb-1">No Pictures Loaded</h2>
-      <p class="text-sm text-zinc-500 max-w-sm">Type in your destination name, select your sorted travel photos, and press Play to begin.</p>
     </div>
 
     <!-- Active Slides Canvas -->
@@ -128,6 +146,9 @@
   <script>
     const imageLoader = document.getElementById('image-loader');
     const locationInput = document.getElementById('location-name');
+    const musicVibe = document.getElementById('music-vibe');
+    const audioLoader = document.getElementById('audio-loader');
+    const musicStatus = document.getElementById('music-status');
     const canvas = document.getElementById('slideshow-canvas');
     const ctx = canvas.getContext('2d');
     const emptyState = document.getElementById('empty-state');
@@ -159,6 +180,15 @@
     logoImage.onerror = () => { logoLoaded = false; };
     logoImage.src = 'logo.png';
 
+    // Background Audio Variables
+    let bgAudio = new Audio();
+    bgAudio.crossOrigin = "anonymous";
+    bgAudio.loop = true;
+    let bgAudioCtx = null;
+    let bgAudioSource = null;
+    let bgAudioDest = null;
+    let isMusicLoaded = false;
+
     let slideshowTime = 0;   // Current elapsed time in milliseconds
     let lastTimestamp = 0;   // Timestamp of last frame
     let isPlaying = false;
@@ -172,12 +202,115 @@
     const TRANSITION_DURATION = 800; // 0.8 seconds cross-dissolve overlap
     const END_SLIDE_DURATION = 4000; // 4 seconds showing the logo
 
-    // Initialize button states
+    // Initialize button states as disabled
     updateButtonStates();
 
-    // File selection event handler
+    // Event Handlers
     imageLoader.addEventListener('change', handleImageSelection);
+    musicVibe.addEventListener('change', handleMusicSelection);
+    audioLoader.addEventListener('change', handleCustomAudioUpload);
 
+    // Initialize Web Audio context on user gesture to bypass browser block
+    function initAudioContext() {
+      if (bgAudioCtx) return;
+      try {
+        bgAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        bgAudioSource = bgAudioCtx.createMediaElementSource(bgAudio);
+        bgAudioDest = bgAudioCtx.createMediaStreamDestination();
+        
+        // Connect to local speakers and recording destination
+        bgAudioSource.connect(bgAudioCtx.destination);
+        bgAudioSource.connect(bgAudioDest);
+      } catch (e) {
+        console.error("Web Audio Context initialization failed:", e);
+      }
+    }
+
+    // Jamendo Free API client fetch helper
+    async function fetchRandomMusic(tag) {
+      const clientId = '56d30c95'; // Sandbox client ID
+      const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=25&audioformat=mp32&tags=${tag}&speed=medium`;
+      
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.results && data.results.length > 0) {
+          const randIdx = Math.floor(Math.random() * data.results.length);
+          const track = data.results[randIdx];
+          return {
+            audioUrl: track.audio,
+            title: track.name,
+            artist: track.artist_name
+          };
+        }
+      } catch (e) {
+        console.error("Failed to fetch Jamendo track:", e);
+      }
+      return null;
+    }
+
+    // Music dropdown change logic
+    async function handleMusicSelection() {
+      const selected = musicVibe.value;
+      
+      // Reset existing audio loading
+      bgAudio.pause();
+      isMusicLoaded = false;
+      musicStatus.classList.add('hidden');
+      musicStatus.innerText = "";
+
+      if (selected === 'none') {
+        bgAudio.src = "";
+        return;
+      }
+
+      if (selected === 'custom') {
+        audioLoader.click();
+        return;
+      }
+
+      // Fetch from API
+      musicStatus.innerText = "🎵 Loading track...";
+      musicStatus.classList.remove('hidden');
+      
+      const song = await fetchRandomMusic(selected);
+      if (song) {
+        bgAudio.src = song.audioUrl;
+        bgAudio.load();
+        isMusicLoaded = true;
+        
+        const label = `🎵 "${song.title}" - ${song.artist}`;
+        musicStatus.innerText = label;
+        musicStatus.title = `${song.title} by ${song.artist}`;
+      } else {
+        musicStatus.innerText = "❌ Music fetch failed";
+        musicVibe.value = "none";
+      }
+    }
+
+    // Custom local audio file upload handler
+    function handleCustomAudioUpload(event) {
+      const file = event.target.files[0];
+      if (!file) {
+        musicVibe.value = "none";
+        return;
+      }
+
+      isMusicLoaded = false;
+      musicStatus.innerText = "📂 Loading local file...";
+      musicStatus.classList.remove('hidden');
+
+      const url = URL.createObjectURL(file);
+      bgAudio.src = url;
+      bgAudio.load();
+      isMusicLoaded = true;
+
+      const label = `📂 Custom: ${file.name}`;
+      musicStatus.innerText = label;
+      musicStatus.title = file.name;
+    }
+
+    // File selection event handler
     function handleImageSelection(event) {
       const files = Array.from(event.target.files);
       if (files.length === 0) return;
@@ -270,11 +403,16 @@
     function startSlideshow() {
       if (loadedImages.length === 0) return;
       
+      initAudioContext();
       isPlaying = true;
       lastTimestamp = 0;
       btnPlayPause.innerText = 'Pause';
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
+
+      if (isMusicLoaded) {
+        bgAudio.play().catch(e => console.warn("Audio play blocked by browser:", e));
+      }
 
       if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(animLoop);
@@ -287,6 +425,10 @@
       btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
       btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
       
+      if (isMusicLoaded) {
+        bgAudio.pause();
+      }
+
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
@@ -299,6 +441,12 @@
       lastTimestamp = 0;
       drawFrame(0);
       updateButtonStates();
+
+      if (isMusicLoaded) {
+        bgAudio.pause();
+        bgAudio.currentTime = 0;
+        bgAudio.volume = 1.0;
+      }
     }
 
     function updateButtonStates() {
@@ -328,6 +476,16 @@
 
       const N = loadedImages.length;
       const totalDuration = N * FRAME_DURATION + END_SLIDE_DURATION;
+
+      // Handle music fade-out in the last 2 seconds of the end screen
+      if (isPlaying && isMusicLoaded) {
+        const timeLeft = totalDuration - slideshowTime;
+        if (timeLeft <= 2000) {
+          bgAudio.volume = Math.max(0, timeLeft / 2000);
+        } else {
+          bgAudio.volume = 1.0;
+        }
+      }
 
       // Manage progress bar during video export
       if (isRecording) {
@@ -412,7 +570,7 @@
           }
         }
 
-        // Draw William H. Chan Travel + Eats logo contents
+        // Draw logo contents
         ctx.save();
         ctx.globalAlpha = alpha;
 
@@ -550,6 +708,7 @@
     // MediaRecorder Video Export Logic
     function startRecording() {
       recordedChunks = [];
+      initAudioContext();
       
       // Determine the best video mimeType supported by the user's browser
       let mimeType = 'video/webm;codecs=vp9';
@@ -564,13 +723,24 @@
         mimeType = 'video/webm';
       }
 
-      const stream = canvas.captureStream(30); // Capture canvas at 30 FPS
+      const canvasStream = canvas.captureStream(30); // Capture canvas at 30 FPS
+      const videoTrack = canvasStream.getVideoTracks()[0];
+      
+      let combinedStream = canvasStream;
+
+      // Mix background audio into the recording stream if active
+      if (isMusicLoaded && bgAudioDest) {
+        const audioTrack = bgAudioDest.stream.getAudioTracks()[0];
+        if (audioTrack) {
+          combinedStream = new MediaStream([videoTrack, audioTrack]);
+        }
+      }
       
       try {
-        mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+        mediaRecorder = new MediaRecorder(combinedStream, { mimeType: mimeType });
       } catch (e) {
         console.warn("Fallback to default MediaRecorder configuration:", e);
-        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder = new MediaRecorder(combinedStream);
       }
 
       mediaRecorder.ondataavailable = (event) => {
@@ -605,7 +775,7 @@
       progressModal.classList.remove('hidden');
       progressModal.classList.add('flex');
       
-      // Reset play state and start recording
+      // Start recording
       mediaRecorder.start();
       
       slideshowTime = 0;
@@ -615,6 +785,12 @@
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
       
+      if (isMusicLoaded) {
+        bgAudio.currentTime = 0;
+        bgAudio.volume = 1.0;
+        bgAudio.play().catch(e => console.warn("Audio play blocked by browser:", e));
+      }
+
       if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(animLoop);
       }
@@ -625,7 +801,6 @@
         mediaRecorder.stop();
       }
     }
-
   </script>
 </body>
 </html>
