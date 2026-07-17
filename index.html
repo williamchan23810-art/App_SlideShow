@@ -226,7 +226,7 @@
     }
 
     // Jamendo Free API client fetch helper
-    async function fetchRandomMusic(tag) {
+    async function fetchJamendoMusic(tag) {
       const clientId = '709fa152'; // Active testing client ID
       const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=25&audioformat=mp32&tags=${tag}&speed=medium`;
       
@@ -246,6 +246,63 @@
         console.error("Failed to fetch Jamendo track:", e);
       }
       return null;
+    }
+
+    // ccMixter Free API client fetch helper (fallback, no API key required)
+    async function fetchCcMixterMusic(tag) {
+      // Map slideshow vibes to ccMixter tags
+      let ccTag = tag;
+      if (tag === 'travel') ccTag = 'acoustic';
+      else if (tag === 'cinematic') ccTag = 'ambient';
+      else if (tag === 'acoustic') ccTag = 'guitar';
+
+      const url = `https://ccmixter.org/api/query?tags=${ccTag}&format=json&limit=20`;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const validTracks = data.filter(track => 
+            track.files && 
+            track.files.length > 0 && 
+            track.files.some(f => f.file_format === 'mp3')
+          );
+          if (validTracks.length > 0) {
+            const randIdx = Math.floor(Math.random() * validTracks.length);
+            const track = validTracks[randIdx];
+            const mp3File = track.files.find(f => f.file_format === 'mp3');
+            return {
+              audioUrl: mp3File.download_url,
+              title: track.upload_name || 'ccMixter Song',
+              artist: track.user_name || 'Unknown Artist'
+            };
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch ccMixter track:", e);
+      }
+      return null;
+    }
+
+    // Consolidated music fetch helper with multiple fallbacks
+    async function fetchRandomMusic(tag) {
+      // Attempt 1: Jamendo API
+      let song = await fetchJamendoMusic(tag);
+      if (song) return song;
+
+      console.warn("Jamendo failed. Trying ccMixter fallback...");
+      
+      // Attempt 2: ccMixter API
+      song = await fetchCcMixterMusic(tag);
+      if (song) return song;
+
+      console.warn("ccMixter failed. Using final static fallback song...");
+
+      // Attempt 3: Verified, high-quality, CORS-enabled static fallback track
+      return {
+        audioUrl: 'http://ccmixter.org/content/snowflake/snowflake_-_A_Cold_Air_(with_Kara_Square).mp3',
+        title: 'A Cold Air',
+        artist: 'snowflake (feat. Kara Square)'
+      };
     }
 
     // Music dropdown change logic
