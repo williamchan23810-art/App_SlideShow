@@ -48,17 +48,18 @@
           class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
         />
 
-        <!-- Background Music Selector -->
-        <select id="music-vibe" class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44">
-          <option value="none">🎵 No Background Music</option>
-          <option value="travel">✈️ Travel Adventure (API)</option>
-          <option value="cinematic">🎬 Cinematic Dream (API)</option>
-          <option value="acoustic">🎸 Sunset Acoustic (API)</option>
-          <option value="ambient">🧘 Chill Ambient (API)</option>
-          <option value="custom">📂 Upload Custom MP3...</option>
+        <!-- Simplified Music Box Selector -->
+        <select id="music-select" class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48">
+          <option value="none" selected>🎵 No Music</option>
+          <option value="custom">📂 Upload MP3...</option>
         </select>
-        <!-- Hidden file loader for custom audio -->
         <input type="file" id="audio-loader" accept="audio/*" class="hidden" />
+
+        <!-- Aspect Ratio Selector -->
+        <select id="aspect-ratio-select" class="bg-zinc-800 border border-zinc-700 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-40">
+          <option value="landscape-4-3" selected>📷 Landscape (4:3)</option>
+          <option value="portrait-9-16">📱 Portrait (9:16)</option>
+        </select>
         
         <!-- File Input (Supports multiple file selection) -->
         <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all shadow">
@@ -80,8 +81,11 @@
             </svg>
             Save as Video
           </button>
-          <!-- Loaded Music Status Label -->
-          <span id="music-status" class="text-xs text-blue-400 font-medium ml-1 max-w-[180px] truncate hidden" title=""></span>
+          <!-- Loaded Music Status & Remove Button -->
+          <div id="music-status-container" class="hidden items-center gap-2 bg-zinc-800 border border-zinc-700 px-3 py-1.5 rounded text-xs select-none">
+            <span id="music-status-text" class="text-emerald-400 font-semibold max-w-[150px] truncate"></span>
+            <button type="button" id="btn-remove-music" class="text-zinc-500 hover:text-red-400 font-bold text-sm leading-none focus:outline-none" title="Remove Music">×</button>
+          </div>
         </div>
       </div>
     </div>
@@ -97,7 +101,7 @@
       <div class="absolute inset-0 bg-black/40 flex flex-col items-center justify-end pb-12 md:pb-24 p-6 text-center">
         <div class="bg-zinc-950/80 backdrop-blur border border-zinc-800 p-6 rounded-2xl max-w-md shadow-2xl">
           <h2 class="text-xl font-bold mb-2 text-white tracking-wide">Create your Slide-Show Video.</h2>
-          <p class="text-sm text-zinc-300 leading-relaxed">1. Give it a Name; 2. Choose Background Music Vibe; 3. Select Photos; 4. Press Start.</p>
+          <p class="text-sm text-zinc-300 leading-relaxed">1. Give it a Name; 2. Upload Background Music; 3. Select Photos; 4. Press Start.</p>
         </div>
       </div>
     </div>
@@ -144,9 +148,11 @@
   <script>
     const imageLoader = document.getElementById('image-loader');
     const locationInput = document.getElementById('location-name');
-    const musicVibe = document.getElementById('music-vibe');
     const audioLoader = document.getElementById('audio-loader');
-    const musicStatus = document.getElementById('music-status');
+    const musicSelect = document.getElementById('music-select');
+    const musicStatusContainer = document.getElementById('music-status-container');
+    const musicStatusText = document.getElementById('music-status-text');
+    const btnRemoveMusic = document.getElementById('btn-remove-music');
     const canvas = document.getElementById('slideshow-canvas');
     const ctx = canvas.getContext('2d');
     const emptyState = document.getElementById('empty-state');
@@ -155,17 +161,40 @@
     const btnReset = document.getElementById('btn-reset');
     const btnSaveVideo = document.getElementById('btn-save-video');
     const controlPanel = document.getElementById('control-panel');
+    const aspectRatioSelect = document.getElementById('aspect-ratio-select');
 
     // Modal elements
     const progressModal = document.getElementById('progress-modal');
     const modalProgressBar = document.getElementById('modal-progress-bar');
     const modalPercentage = document.getElementById('modal-percentage');
 
-    // Canvas Settings
-    const V_WIDTH = 1440;
-    const V_HEIGHT = 1080;
+    // Canvas Settings & Aspect Ratio Configuration
+    const aspectRatios = {
+      'landscape-4-3': { w: 1440, h: 1080 },
+      'portrait-9-16': { w: 1080, h: 1920 }
+    };
+    let V_WIDTH = 1440;
+    let V_HEIGHT = 1080;
+
     canvas.width = V_WIDTH;
     canvas.height = V_HEIGHT;
+
+    function handleAspectRatioChange() {
+      const selected = aspectRatioSelect.value;
+      if (aspectRatios[selected]) {
+        V_WIDTH = aspectRatios[selected].w;
+        V_HEIGHT = aspectRatios[selected].h;
+        canvas.width = V_WIDTH;
+        canvas.height = V_HEIGHT;
+        
+        // Redraw current frame if images are loaded to provide immediate preview
+        if (loadedImages.length > 0) {
+          drawFrame(slideshowTime);
+        }
+      }
+    }
+    
+    aspectRatioSelect.addEventListener('change', handleAspectRatioChange);
 
     // State Variables
     let imagesList = [];     // Array of Object URLs
@@ -195,6 +224,9 @@
     let animationFrameId = null;
     let mediaRecorder = null;
     let recordedChunks = [];
+    let recordedVideoBlob = null;
+    let recordedVideoUrl = null;
+    let isSavingRequested = false;
 
     // Timing constants
     const FRAME_DURATION = 4000;   // 4 seconds per image slide
@@ -206,12 +238,18 @@
 
     // Event Handlers
     imageLoader.addEventListener('change', handleImageSelection);
-    musicVibe.addEventListener('change', handleMusicSelection);
     audioLoader.addEventListener('change', handleCustomAudioUpload);
+    musicSelect.addEventListener('change', handleMusicSelection);
+    btnRemoveMusic.addEventListener('click', removeMusic);
 
     // Initialize Web Audio context on user gesture to bypass browser block
     function initAudioContext() {
-      if (bgAudioCtx) return;
+      if (bgAudioCtx) {
+        if (bgAudioCtx.state === 'suspended') {
+          bgAudioCtx.resume();
+        }
+        return;
+      }
       try {
         bgAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
         bgAudioSource = bgAudioCtx.createMediaElementSource(bgAudio);
@@ -220,127 +258,22 @@
         // Connect to local speakers and recording destination
         bgAudioSource.connect(bgAudioCtx.destination);
         bgAudioSource.connect(bgAudioDest);
+        
+        if (bgAudioCtx.state === 'suspended') {
+          bgAudioCtx.resume();
+        }
       } catch (e) {
         console.error("Web Audio Context initialization failed:", e);
       }
     }
 
-    // Jamendo Free API client fetch helper
-    async function fetchJamendoMusic(tag) {
-      const clientId = '709fa152'; // Active testing client ID
-      const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=25&audioformat=mp32&tags=${tag}&speed=medium`;
-      
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.results && data.results.length > 0) {
-          const randIdx = Math.floor(Math.random() * data.results.length);
-          const track = data.results[randIdx];
-          return {
-            audioUrl: track.audio,
-            title: track.name,
-            artist: track.artist_name
-          };
-        }
-      } catch (e) {
-        console.error("Failed to fetch Jamendo track:", e);
-      }
-      return null;
-    }
-
-    // ccMixter Free API client fetch helper (fallback, no API key required)
-    async function fetchCcMixterMusic(tag) {
-      // Map slideshow vibes to ccMixter tags
-      let ccTag = tag;
-      if (tag === 'travel') ccTag = 'acoustic';
-      else if (tag === 'cinematic') ccTag = 'ambient';
-      else if (tag === 'acoustic') ccTag = 'guitar';
-
-      const url = `https://ccmixter.org/api/query?tags=${ccTag}&format=json&limit=20`;
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data && data.length > 0) {
-          const validTracks = data.filter(track => 
-            track.files && 
-            track.files.length > 0 && 
-            track.files.some(f => f.file_format === 'mp3')
-          );
-          if (validTracks.length > 0) {
-            const randIdx = Math.floor(Math.random() * validTracks.length);
-            const track = validTracks[randIdx];
-            const mp3File = track.files.find(f => f.file_format === 'mp3');
-            return {
-              audioUrl: mp3File.download_url,
-              title: track.upload_name || 'ccMixter Song',
-              artist: track.user_name || 'Unknown Artist'
-            };
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch ccMixter track:", e);
-      }
-      return null;
-    }
-
-    // Consolidated music fetch helper with multiple fallbacks
-    async function fetchRandomMusic(tag) {
-      // Attempt 1: Jamendo API
-      let song = await fetchJamendoMusic(tag);
-      if (song) return song;
-
-      console.warn("Jamendo failed. Trying ccMixter fallback...");
-      
-      // Attempt 2: ccMixter API
-      song = await fetchCcMixterMusic(tag);
-      if (song) return song;
-
-      console.warn("ccMixter failed. Using final static fallback song...");
-
-      // Attempt 3: Verified, high-quality, CORS-enabled static fallback track
-      return {
-        audioUrl: 'http://ccmixter.org/content/snowflake/snowflake_-_A_Cold_Air_(with_Kara_Square).mp3',
-        title: 'A Cold Air',
-        artist: 'snowflake (feat. Kara Square)'
-      };
-    }
-
-    // Music dropdown change logic
-    async function handleMusicSelection() {
-      const selected = musicVibe.value;
-      
-      // Reset existing audio loading
-      bgAudio.pause();
-      isMusicLoaded = false;
-      musicStatus.classList.add('hidden');
-      musicStatus.innerText = "";
-
+    // Music Box selection handler
+    function handleMusicSelection() {
+      const selected = musicSelect.value;
       if (selected === 'none') {
-        bgAudio.src = "";
-        return;
-      }
-
-      if (selected === 'custom') {
+        removeMusic();
+      } else if (selected === 'custom') {
         audioLoader.click();
-        return;
-      }
-
-      // Fetch from API
-      musicStatus.innerText = "🎵 Loading track...";
-      musicStatus.classList.remove('hidden');
-      
-      const song = await fetchRandomMusic(selected);
-      if (song) {
-        bgAudio.src = song.audioUrl;
-        bgAudio.load();
-        isMusicLoaded = true;
-        
-        const label = `🎵 "${song.title}" - ${song.artist}`;
-        musicStatus.innerText = label;
-        musicStatus.title = `${song.title} by ${song.artist}`;
-      } else {
-        musicStatus.innerText = "❌ Music fetch failed";
-        musicVibe.value = "none";
       }
     }
 
@@ -348,22 +281,40 @@
     function handleCustomAudioUpload(event) {
       const file = event.target.files[0];
       if (!file) {
-        musicVibe.value = "none";
+        musicSelect.value = isMusicLoaded ? 'custom' : 'none';
         return;
       }
 
       isMusicLoaded = false;
-      musicStatus.innerText = "📂 Loading local file...";
-      musicStatus.classList.remove('hidden');
+      musicStatusContainer.classList.remove('hidden');
+      musicStatusContainer.classList.add('flex');
+      musicStatusText.innerText = "📂 Loading file...";
+      musicStatusText.title = file.name;
 
       const url = URL.createObjectURL(file);
+      
+      // Crucial: remove crossorigin attribute for local files to avoid CORS blocks on blobs!
+      bgAudio.removeAttribute('crossorigin');
+      
       bgAudio.src = url;
       bgAudio.load();
       isMusicLoaded = true;
 
-      const label = `📂 Custom: ${file.name}`;
-      musicStatus.innerText = label;
-      musicStatus.title = file.name;
+      musicStatusText.innerText = `🎵 ${file.name}`;
+      musicSelect.value = 'custom';
+    }
+
+    // Remove uploaded background music
+    function removeMusic() {
+      bgAudio.pause();
+      isMusicLoaded = false;
+      bgAudio.src = "";
+      bgAudio.load();
+      audioLoader.value = "";
+      musicStatusContainer.classList.add('hidden');
+      musicStatusContainer.classList.remove('flex');
+      musicStatusText.innerText = "";
+      musicSelect.value = 'none';
     }
 
     // File selection event handler
@@ -451,8 +402,34 @@
 
     // Save as Video control
     btnSaveVideo.addEventListener('click', () => {
-      if (loadedImages.length > 0) {
-        startRecording();
+      if (loadedImages.length === 0) return;
+
+      if (recordedVideoUrl) {
+        // Instant download of the pre-recorded video blob
+        const recordedMime = mediaRecorder ? mediaRecorder.mimeType : 'video/webm';
+        const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
+        
+        const a = document.createElement('a');
+        a.href = recordedVideoUrl;
+        a.download = `travel_slideshow_${Date.now()}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        // Trigger recording playback with visual progress modal
+        isSavingRequested = true;
+        progressModal.classList.remove('hidden');
+        progressModal.classList.add('flex');
+        
+        if (isPlaying) {
+          // If already playing, just continue recording (which is running in bg anyway)
+        } else {
+          // Play from beginning
+          slideshowTime = 0;
+          lastTimestamp = 0;
+          bgAudio.currentTime = 0;
+          startSlideshow();
+        }
       }
     });
 
@@ -460,11 +437,123 @@
       if (loadedImages.length === 0) return;
       
       initAudioContext();
+      
+      // Resume context if suspended (browser security autoplay policies)
+      if (bgAudioCtx && bgAudioCtx.state === 'suspended') {
+        bgAudioCtx.resume();
+      }
+
+      // If starting from the very beginning (time = 0), initialize background MediaRecorder
+      if (slideshowTime === 0) {
+        recordedChunks = [];
+        recordedVideoBlob = null;
+        if (recordedVideoUrl) {
+          URL.revokeObjectURL(recordedVideoUrl);
+          recordedVideoUrl = null;
+        }
+        
+        // Restore Save button back to blue state
+        btnSaveVideo.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Save as Video
+        `;
+        btnSaveVideo.className = "bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow disabled:opacity-50 disabled:cursor-not-allowed";
+
+        // Determine the best video mimeType supported by the user's browser
+        let mimeType = 'video/webm;codecs=vp9';
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+          mimeType = 'video/webm;codecs=vp9';
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+          mimeType = 'video/webm;codecs=vp8';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+          mimeType = 'video/webm';
+        } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
+          mimeType = 'video/mp4;codecs=h264';
+        } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+          mimeType = 'video/mp4';
+        }
+
+        const canvasStream = canvas.captureStream(30); // Capture canvas at 30 FPS
+        const videoTrack = canvasStream.getVideoTracks()[0];
+        let combinedStream = canvasStream;
+
+        // Mix background audio into the recording stream if active
+        if (isMusicLoaded && bgAudioDest) {
+          const audioTrack = bgAudioDest.stream.getAudioTracks()[0];
+          if (audioTrack) {
+            combinedStream = new MediaStream([videoTrack, audioTrack]);
+          }
+        }
+        
+        try {
+          mediaRecorder = new MediaRecorder(combinedStream, { mimeType: mimeType });
+        } catch (e) {
+          console.warn("Fallback to default MediaRecorder configuration:", e);
+          mediaRecorder = new MediaRecorder(combinedStream);
+        }
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const recordedMime = mediaRecorder.mimeType || mimeType;
+          const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
+          
+          recordedVideoBlob = new Blob(recordedChunks, { type: recordedMime });
+          recordedVideoUrl = URL.createObjectURL(recordedVideoBlob);
+          
+          // Enable direct instant download on Save as Video button
+          btnSaveVideo.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Video
+          `;
+          btnSaveVideo.className = "bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow";
+
+          if (isSavingRequested) {
+            // Trigger instant download
+            const a = document.createElement('a');
+            a.href = recordedVideoUrl;
+            a.download = `travel_slideshow_${Date.now()}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Hide progress modal
+            progressModal.classList.add('hidden');
+            progressModal.classList.remove('flex');
+            
+            isSavingRequested = false;
+            resetSlideshow();
+          }
+        };
+
+        mediaRecorder.start();
+      } else {
+        // If resuming from a paused state
+        if (mediaRecorder && mediaRecorder.state === 'paused') {
+          mediaRecorder.resume();
+        }
+      }
+      
       isPlaying = true;
       lastTimestamp = 0;
       btnPlayPause.innerText = 'Pause';
       btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
       btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
+
+      // Disable inputs during active slideshow play/export
+      aspectRatioSelect.disabled = true;
+      musicSelect.disabled = true;
+      locationInput.disabled = true;
+      imageLoader.disabled = true;
+      imageLoader.parentElement.classList.add('opacity-50', 'pointer-events-none');
 
       if (isMusicLoaded) {
         bgAudio.play().catch(e => console.warn("Audio play blocked by browser:", e));
@@ -481,8 +570,19 @@
       btnPlayPause.classList.replace('bg-amber-600', 'bg-emerald-600');
       btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
       
+      // Re-enable inputs
+      aspectRatioSelect.disabled = false;
+      musicSelect.disabled = false;
+      locationInput.disabled = false;
+      imageLoader.disabled = false;
+      imageLoader.parentElement.classList.remove('opacity-50', 'pointer-events-none');
+
       if (isMusicLoaded) {
         bgAudio.pause();
+      }
+
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.pause();
       }
 
       if (animationFrameId) {
@@ -498,7 +598,6 @@
 
       // Clear text inputs and selectors
       locationInput.value = "";
-      musicVibe.value = "none";
       imageLoader.value = "";
       audioLoader.value = "";
 
@@ -509,10 +608,29 @@
 
       // Reset audio states
       isMusicLoaded = false;
-      musicStatus.classList.add('hidden');
-      musicStatus.innerText = "";
+      musicStatusContainer.classList.add('hidden');
+      musicStatusContainer.classList.remove('flex');
+      musicStatusText.innerText = "";
+      musicSelect.value = 'none';
       bgAudio.src = "";
       bgAudio.load();
+
+      // Revoke and clear recorded video states
+      recordedVideoBlob = null;
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl);
+        recordedVideoUrl = null;
+      }
+      isSavingRequested = false;
+
+      // Restore Save button back to blue state
+      btnSaveVideo.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Save as Video
+      `;
+      btnSaveVideo.className = "bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all flex items-center gap-1.5 shadow disabled:opacity-50 disabled:cursor-not-allowed";
 
       // Reset play/pause button state back to original "Start"
       btnPlayPause.innerText = 'Start';
@@ -574,7 +692,7 @@
       }
 
       // Manage progress bar during video export
-      if (isRecording) {
+      if (isSavingRequested) {
         const progressPercent = Math.min(100, Math.floor((slideshowTime / totalDuration) * 100));
         modalProgressBar.style.width = `${progressPercent}%`;
         modalPercentage.innerText = `${progressPercent}%`;
@@ -583,8 +701,8 @@
       // Check if slideshow is complete
       if (slideshowTime >= totalDuration) {
         pauseSlideshow();
-        if (isRecording) {
-          stopRecording();
+        if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+          mediaRecorder.stop();
         }
       } else {
         animationFrameId = requestAnimationFrame(animLoop);
@@ -662,30 +780,32 @@
 
         // Subtle pulsing zoom for logo
         const pulseScale = 1.0 + 0.03 * Math.sin(endElapsed * 0.002);
-        const radius = 120 * pulseScale;
+        const baseRadius = Math.floor(V_WIDTH * 0.083); // 120px for 1440 width
+        const radius = baseRadius * pulseScale;
         const hasLogo = logoImage.complete && logoImage.naturalWidth > 0;
+        const logoY = V_HEIGHT / 2 - Math.floor(V_HEIGHT * 0.074); // -80px for 1080 height
 
         if (hasLogo) {
           ctx.save();
           // Draw circular clip path
           ctx.beginPath();
-          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
+          ctx.arc(V_WIDTH / 2, logoY, radius, 0, Math.PI * 2);
           ctx.clip();
 
           // Draw logo image inside circle
-          ctx.drawImage(logoImage, V_WIDTH / 2 - radius, V_HEIGHT / 2 - 80 - radius, radius * 2, radius * 2);
+          ctx.drawImage(logoImage, V_WIDTH / 2 - radius, logoY - radius, radius * 2, radius * 2);
           ctx.restore();
 
           // Outer circle border
           ctx.strokeStyle = 'rgba(63, 63, 70, 0.6)'; // zinc-700
           ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
+          ctx.arc(V_WIDTH / 2, logoY, radius, 0, Math.PI * 2);
           ctx.stroke();
         } else {
           // Draw a beautiful fallback styled icon (pulsing circular badge with W)
           ctx.beginPath();
-          ctx.arc(V_WIDTH / 2, V_HEIGHT / 2 - 80, radius, 0, Math.PI * 2);
+          ctx.arc(V_WIDTH / 2, logoY, radius, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(30, 58, 138, 0.3)'; // blue-900/30
           ctx.fill();
           
@@ -696,8 +816,8 @@
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = '#60a5fa'; // blue-400
-          ctx.font = `bold ${Math.floor(80 * pulseScale)}px sans-serif`;
-          ctx.fillText('W', V_WIDTH / 2, V_HEIGHT / 2 - 80);
+          ctx.font = `bold ${Math.floor(80 * (V_WIDTH / 1440) * pulseScale)}px sans-serif`;
+          ctx.fillText('W', V_WIDTH / 2, logoY);
         }
 
         // Draw ending texts
@@ -707,13 +827,16 @@
         ctx.shadowBlur = 8;
         ctx.shadowOffsetY = 2;
 
+        const endTitleFontSize = Math.floor(V_WIDTH * 0.025); // 36px for 1440 width
+        const endSubFontSize = Math.floor(V_WIDTH * 0.014); // 20px for 1440 width
+
         ctx.fillStyle = '#f4f4f5'; // zinc-100
-        ctx.font = 'bold 36px sans-serif';
-        ctx.fillText('William H. Chan Studio', V_WIDTH / 2, V_HEIGHT / 2 + 100);
+        ctx.font = `bold ${endTitleFontSize}px sans-serif`;
+        ctx.fillText('William H. Chan Studio', V_WIDTH / 2, V_HEIGHT / 2 + Math.floor(V_HEIGHT * 0.092));
 
         ctx.fillStyle = '#a1a1aa'; // zinc-400
-        ctx.font = '20px sans-serif';
-        ctx.fillText('Explore. Learn. Discover.', V_WIDTH / 2, V_HEIGHT / 2 + 160);
+        ctx.font = `${endSubFontSize}px sans-serif`;
+        ctx.fillText('Explore. Learn. Discover.', V_WIDTH / 2, V_HEIGHT / 2 + Math.floor(V_HEIGHT * 0.148));
 
         ctx.restore();
       } else {
@@ -772,18 +895,23 @@
           ctx.shadowOffsetY = 4;
 
           // Header Text
+          const titleFontSize = Math.floor(V_WIDTH * 0.05); // 72px for 1440 width
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 72px sans-serif';
+          ctx.font = `bold ${titleFontSize}px sans-serif`;
           if ('letterSpacing' in ctx) {
-            ctx.letterSpacing = '8px';
+            ctx.letterSpacing = `${Math.floor(titleFontSize * 0.11)}px`; // 8px for 72px font
           }
           ctx.fillText(locationName.toUpperCase(), V_WIDTH / 2, V_HEIGHT / 2);
 
           // White underline divider
+          const dividerWidth = Math.floor(V_WIDTH * 0.055); // 80px for 1440 width
+          const dividerOffset = Math.floor(titleFontSize * 0.7); // 50px for 72px font
+          const dividerThickness = Math.max(2, Math.floor(titleFontSize * 0.05)); // 4px for 72px font
+
           ctx.shadowColor = 'transparent';
           ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
           ctx.beginPath();
-          ctx.roundRect(V_WIDTH / 2 - 40, V_HEIGHT / 2 + 50, 80, 4, 2);
+          ctx.roundRect(V_WIDTH / 2 - dividerWidth / 2, V_HEIGHT / 2 + dividerOffset, dividerWidth, dividerThickness, 2);
           ctx.fill();
 
           ctx.restore();
@@ -791,102 +919,6 @@
       }
     }
 
-    // MediaRecorder Video Export Logic
-    function startRecording() {
-      recordedChunks = [];
-      initAudioContext();
-      
-      // Determine the best video mimeType supported by the user's browser
-      let mimeType = 'video/webm;codecs=vp9';
-      
-      if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
-        mimeType = 'video/mp4;codecs=h264';
-      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-        mimeType = 'video/mp4';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-        mimeType = 'video/webm;codecs=vp8';
-      } else if (MediaRecorder.isTypeSupported('video/webm')) {
-        mimeType = 'video/webm';
-      }
-
-      const canvasStream = canvas.captureStream(30); // Capture canvas at 30 FPS
-      const videoTrack = canvasStream.getVideoTracks()[0];
-      
-      let combinedStream = canvasStream;
-
-      // Mix background audio into the recording stream if active
-      if (isMusicLoaded && bgAudioDest) {
-        const audioTrack = bgAudioDest.stream.getAudioTracks()[0];
-        if (audioTrack) {
-          combinedStream = new MediaStream([videoTrack, audioTrack]);
-        }
-      }
-      
-      try {
-        mediaRecorder = new MediaRecorder(combinedStream, { mimeType: mimeType });
-      } catch (e) {
-        console.warn("Fallback to default MediaRecorder configuration:", e);
-        mediaRecorder = new MediaRecorder(combinedStream);
-      }
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          recordedChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const finalBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/mp4' });
-        const url = URL.createObjectURL(finalBlob);
-        
-        // Trigger local file download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `travel_slideshow_${Date.now()}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        // Hide progress modal
-        progressModal.classList.add('hidden');
-        progressModal.classList.remove('flex');
-        
-        isRecording = false;
-        resetSlideshow();
-      };
-
-      // Enter recording state
-      isRecording = true;
-      progressModal.classList.remove('hidden');
-      progressModal.classList.add('flex');
-      
-      // Start recording
-      mediaRecorder.start();
-      
-      slideshowTime = 0;
-      lastTimestamp = 0;
-      isPlaying = true;
-      btnPlayPause.innerText = 'Pause';
-      btnPlayPause.classList.replace('bg-emerald-600', 'bg-amber-600');
-      btnPlayPause.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
-      
-      if (isMusicLoaded) {
-        bgAudio.currentTime = 0;
-        bgAudio.volume = 1.0;
-        bgAudio.play().catch(e => console.warn("Audio play blocked by browser:", e));
-      }
-
-      if (!animationFrameId) {
-        animationFrameId = requestAnimationFrame(animLoop);
-      }
-    }
-
-    function stopRecording() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-    }
   </script>
 </body>
 </html>
