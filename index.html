@@ -162,7 +162,7 @@
     const modalPercentage = document.getElementById('modal-percentage');
 
     // Canvas Settings
-    const V_WIDTH = 1920;
+    const V_WIDTH = 1440;
     const V_HEIGHT = 1080;
     canvas.width = V_WIDTH;
     canvas.height = V_HEIGHT;
@@ -172,6 +172,7 @@
     let loadedImages = [];   // Array of Image elements
     let logoImage = new Image();
     let logoLoaded = false;
+    const originalEmptyStateHTML = emptyState.innerHTML;
 
     // Preload travel logo
     logoImage.onload = () => { logoLoaded = true; };
@@ -226,7 +227,7 @@
 
     // Jamendo Free API client fetch helper
     async function fetchRandomMusic(tag) {
-      const clientId = '56d30c95'; // Sandbox client ID
+      const clientId = '709fa152'; // Active testing client ID
       const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=25&audioformat=mp32&tags=${tag}&speed=medium`;
       
       try {
@@ -437,10 +438,40 @@
       pauseSlideshow();
       slideshowTime = 0;
       lastTimestamp = 0;
-      drawFrame(0);
+
+      // Clear text inputs and selectors
+      locationInput.value = "";
+      musicVibe.value = "none";
+      imageLoader.value = "";
+      audioLoader.value = "";
+
+      // Revoke and clear loaded images
+      imagesList.forEach(url => URL.revokeObjectURL(url));
+      imagesList = [];
+      loadedImages = [];
+
+      // Reset audio states
+      isMusicLoaded = false;
+      musicStatus.classList.add('hidden');
+      musicStatus.innerText = "";
+      bgAudio.src = "";
+      bgAudio.load();
+
+      // Reset play/pause button state back to original "Start"
+      btnPlayPause.innerText = 'Start';
+      btnPlayPause.className = "bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-1.5 px-4 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+
+      // Restore welcome screen
+      emptyState.innerHTML = originalEmptyStateHTML;
+      emptyState.classList.remove('hidden');
+
+      // Clear canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
       updateButtonStates();
 
-      if (isMusicLoaded) {
+      if (bgAudio) {
         bgAudio.pause();
         bgAudio.currentTime = 0;
         bgAudio.volume = 1.0;
@@ -507,11 +538,11 @@
     function getSlideScale(i, time) {
       const t_start = i > 0 ? (i * FRAME_DURATION - TRANSITION_DURATION) : 0;
       const elapsed = time - t_start;
-      if (elapsed < 0) return 1.0;
+      if (elapsed < 0) return 0.95;
       
       const duration = i > 0 ? (FRAME_DURATION + TRANSITION_DURATION) : FRAME_DURATION;
       const progress = Math.min(1.0, elapsed / duration);
-      return 1.0 + 0.15 * progress;
+      return 0.95 + 0.08 * progress;
     }
 
     // Helper to draw an image centered and scaled with CSS object-cover behavior
@@ -524,11 +555,11 @@
       let drawWidth, drawHeight;
 
       if (imgRatio > canvasRatio) {
-        drawHeight = V_HEIGHT;
-        drawWidth = V_HEIGHT * imgRatio;
-      } else {
         drawWidth = V_WIDTH;
         drawHeight = V_WIDTH / imgRatio;
+      } else {
+        drawHeight = V_HEIGHT;
+        drawWidth = V_HEIGHT * imgRatio;
       }
 
       // Center scale and draw
